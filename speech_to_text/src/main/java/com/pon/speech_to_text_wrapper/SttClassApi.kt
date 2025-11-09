@@ -1,7 +1,6 @@
 package com.pon.speech_to_text_wrapper
 
 import android.app.Application
-import android.bluetooth.BluetoothClass
 import android.content.Context
 import android.media.AudioDeviceInfo
 import android.media.AudioManager
@@ -28,15 +27,22 @@ class SttClassApi {
         set(value) {
             audioManager.bluetoothPriority = value
             field = value
+            // при изменении этого параметра во время работы распознавания меняем микрофон
+            if (state != ApiState.WORKING_MIC )return
+            if (value) audioManager.turnScoOn()
+            else audioManager.turnScoOff()
         }
 
-    fun isInitialized()  = recognizer.sttInitialized
+    fun isInitialized() = recognizer.sttInitialized
 
     /**
      * Асинхронно инициализирует
      * Инициализация происходит только если распознаватель еще не был инициализирован.
      *
      * @param context контекст Android приложения
+     * @param useBluetoothMic - использовать ли bluetooth микрофон при работе,
+     * по умолчанию false - игнорировать микрофон. Параметр может быть переключен после
+     * методом setUseBluetoothMic (...)
      * @return Deferred с объектом RecognizerAPI
      *
      * пример использования:
@@ -61,7 +67,10 @@ class SttClassApi {
      */
     fun initSTT(context: Context, useBluetoothMic: Boolean = false): Deferred<SttClassApi> {
         val deferred = CompletableDeferred<SttClassApi>()
-        if (!audioManager.isInitialised) audioManager.init(context.applicationContext as Application, useBluetoothMic)
+        if (!audioManager.isInitialised) audioManager.init(
+            context.applicationContext as Application,
+            useBluetoothMic
+        )
         this.useBluetoothMic = useBluetoothMic
         CoroutineScope(Dispatchers.IO).launch {
             if (recognizer.sttInitialized) {
@@ -188,15 +197,15 @@ class SttClassApi {
     val sttWorking: Boolean
         get() = state == ApiState.WORKING_MIC
 
-    fun getMicrophones():List<AudioDeviceInfo> {
+    fun getMicrophones(): List<AudioDeviceInfo> {
         val am = audioManager.am
-        if (am == null) throw IllegalStateException( "Init api first")
-        return am.getDevices(AudioManager.GET_DEVICES_INPUTS).toList()
+        if (am == null) throw IllegalStateException("Init api first")
+        val list = am.getDevices(AudioManager.GET_DEVICES_INPUTS).toList()
+        return list
     }
 
-    fun setMicrophone(device: AudioDeviceInfo){
-        recognizer.voskSpeechRecognizer.setPreferredDevice(device)
-    }
+    fun isScoAvailable() =
+        getMicrophones().firstOrNull { it.type == AudioDeviceInfo.TYPE_BLUETOOTH_SCO }
 
 
     /**

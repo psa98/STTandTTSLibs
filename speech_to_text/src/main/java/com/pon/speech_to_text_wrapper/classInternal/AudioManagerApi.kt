@@ -16,22 +16,11 @@ private const val TAG = "AudioManager"
 @Suppress("DEPRECATION")
 object AudioManagerApi {
     internal var am: AudioManager? = null
-    private val receiver by lazy { BlueToothSCOConnectionReceiver().also { it.am = am } }
     var bluetoothPriority = false
         set(value) {
             if (field != value) {
                 field = value
-                context?.let {
-                    if (value) {
-                        startScoReceiver(it)
-                        turnScoOn()
-                    } else {
-                        stopReceiver()
-                        turnScoOff()
-                    }
-                }
             }
-
         }
     var isInitialised = false
     private var context: Application? = null
@@ -48,30 +37,15 @@ object AudioManagerApi {
         AudioManagerApi.context = context
         am = context.getSystemService(AUDIO_SERVICE) as AudioManager
         this.bluetoothPriority = bluetoothPriority
-        if (bluetoothPriority) startScoReceiver(context)
     }
 
-    /**
-     * Запуск бродкаст ресивера, отслеживающего подключение и отключение аудио блютуз устройств
-     * Пока внутри ресивера нет бизнес логики, задачи библиотеки реализуются и без нее
-     */
-    private fun startScoReceiver(applicationContext: Application) {
-        if (Build.VERSION.SDK_INT > 33) applicationContext.registerReceiver(
-            receiver,
-            intentFilter,
-            RECEIVER_EXPORTED
-        )
-        else applicationContext.registerReceiver(receiver, intentFilter)
-    }
+
 
 
     /**
      * останов бродкаст ресивера, отслеживающего подключение и отключение аудио блютуз устройств
      * Вызывается так же при очистке и освобождении реcурсов  Api STT
      */
-    private fun stopReceiver() {
-        runCatching {  context?.unregisterReceiver(receiver)}
-    }
 
 
     fun scoState() = am?.isBluetoothScoOn == true
@@ -83,13 +57,8 @@ object AudioManagerApi {
     fun turnScoOn() {
         // Метод задепрекейчен, но рекомендованный новый что то не заработал, смотри вариант кода ниже.
         // Возможно метод перестанет работать на sdk 35 или 36, тогда надо будет решать эту проблему
-        bluetoothPriority = true
-        context?.let {
-            stopReceiver()
-            startScoReceiver(it)
-        }
         am?.startBluetoothSco()
-        Log.i(TAG, "turnScoOn")
+        //Log.i(TAG, "turnScoOn")
     }
     /*     рекомендованный, но, по итогам тестов, не работающий пока вариант для sdk >=34
          if (Build.VERSION.SDK_INT > Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
@@ -112,8 +81,6 @@ object AudioManagerApi {
      * устройство может быть продолжен до его отключения
      */
     fun turnScoOff() {
-        runCatching {  context?.unregisterReceiver(receiver)}
-        bluetoothPriority = false
         // Метод задепрекейчен, но рекомендованный новый что не заработал, смотри вариант кода ниже
         // возможно метод перестанет работать на sdk 35 или 36, тогда надо будет решать эту проблему
         am?.stopBluetoothSco()

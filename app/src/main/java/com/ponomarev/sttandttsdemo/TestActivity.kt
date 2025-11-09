@@ -13,12 +13,14 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AlertDialog
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.wrapContentWidth
 import androidx.compose.material3.Button
+import androidx.compose.material3.Checkbox
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextField
 import androidx.compose.runtime.Composable
@@ -59,6 +61,7 @@ class TestActivity() : ComponentActivity() {
         var permissionsButtonText by remember { mutableStateOf("") }
         var currentText by remember { mutableStateOf("") }
         var partialText by remember { mutableStateOf("") }
+        var useBT by remember { mutableStateOf(true) }
         var textState by remember { mutableStateOf("Состояние API") }
         var textToSpeak by remember { mutableStateOf("Введите сюда текст для произношения") }
         var sayWordButtonText by remember { mutableStateOf("Подготовка оборудования") }
@@ -110,6 +113,14 @@ class TestActivity() : ComponentActivity() {
 
             Text(text = textState)
 
+            Row {
+                Text(text = "Использовать Bluetooth \n микрофон")
+                Checkbox(useBT, onCheckedChange = {
+                    useBT = it
+                    recognizerApi.useBluetoothMic = it
+                })
+            }
+
             Button(
                 onClick = {
                     if (!recognizerApi.isInitialized()) return@Button
@@ -137,9 +148,11 @@ class TestActivity() : ComponentActivity() {
                 readOnly = false,
                 placeholder = { Text(text = "Введите текст для произнесения") }
             )
+
+
             Button(
                 onClick = {
-                    speakApi.speakPhrase(
+                     speakApi.speakPhrase(
                         textToSpeak,
                         callbackOnStart = { if (recognizerApi.state==WORKING_MIC) recognizerApi.pauseMic() },
                         callbackOnError = {},
