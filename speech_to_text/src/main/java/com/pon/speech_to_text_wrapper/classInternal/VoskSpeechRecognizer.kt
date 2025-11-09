@@ -1,7 +1,6 @@
 package com.pon.speech_to_text_wrapper.classInternal
 
 import android.content.Context
-import android.media.AudioDeviceInfo
 import android.media.AudioRecord
 import android.media.AudioRecord.OnRecordPositionUpdateListener
 import com.google.gson.Gson
@@ -36,6 +35,8 @@ internal object VoskSpeechRecognizer : RecognitionListener {
     internal val allWords: MutableStateFlow<String> = MutableStateFlow("")
     internal val lastWords: MutableStateFlow<String> = MutableStateFlow("")
     internal val partialResult: MutableStateFlow<String> = MutableStateFlow("")
+    internal val wordsWithConf: MutableStateFlow<List<SttClassApi.WordResult>> =
+        MutableStateFlow(SttClassApi.SentenceResult().result)
     internal val apiState: MutableStateFlow<SttClassApi.ApiState> =
         MutableStateFlow(SttClassApi.ApiState.CREATED_NOT_READY)
     private var seanceString = ""
@@ -68,10 +69,11 @@ internal object VoskSpeechRecognizer : RecognitionListener {
 
     override fun onResult(hypothesis: String?) {
         if (hypothesis == null || hypothesis.trim().isEmpty()) return
-        val newWordsString = gson.fromJson(hypothesis, SttClassApi.SentenceResult::class.java).text
-        if (newWordsString.trim().isEmpty()) return
-        lastWords.value = newWordsString
-        seanceString = "$seanceString $newWordsString"
+        val newWordsString = gson.fromJson(hypothesis, SttClassApi.SentenceResult::class.java)
+        if (newWordsString.text.trim().isEmpty()) return
+        wordsWithConf.value = newWordsString.result
+        lastWords.value = newWordsString.text
+        seanceString = "$seanceString ${newWordsString.text}"
     }
 
     override fun onFinalResult(hypothesis: String?) {
@@ -86,11 +88,10 @@ internal object VoskSpeechRecognizer : RecognitionListener {
             lastWords.value = ""
             return
         }
+        wordsWithConf.value = sentenceResult.result
         lastWords.value = newWordsString
         seanceString = "$seanceString $newWordsString"
     }
-
-
 
 
     override fun onPartialResult(hypothesis: String) {
@@ -117,6 +118,7 @@ internal object VoskSpeechRecognizer : RecognitionListener {
                 val sampleRate = SAMPLE_FREQ
                 rec = Recognizer(currentModel, sampleRate)
                 speechService = SpeechService(rec, sampleRate)
+                rec?.setWords(true)
                 partialResult.value = ""
                 lastWords.value = ""
                 //получим доступ к внутреннему объекту recorder SpeechService

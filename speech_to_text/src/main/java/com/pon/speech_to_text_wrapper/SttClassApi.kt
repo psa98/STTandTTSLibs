@@ -9,16 +9,23 @@ import com.pon.speech_to_text_wrapper.SttClassApi.RecognizerAPI.sttInitialized
 import com.pon.speech_to_text_wrapper.SttClassApi.RecognizerAPI.voskSpeechRecognizer
 import com.pon.speech_to_text_wrapper.classInternal.AudioManagerApi
 import com.pon.speech_to_text_wrapper.classInternal.VoskSpeechRecognizer
-
-import kotlinx.coroutines.*
-
+import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Deferred
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.launch
 
 
+/**
+ * Рекомендуется использовать единственный объект класса (синглтон) для доступа к API на приложение
+ * при создании нескольких объектов они все равно будут использовать одно общее
+ * состояние АПИ, включая состояние распознавания и инициализации, единый доступ к микрофонам
+ * и одну модель
+ */
 @Suppress("unused")
 class SttClassApi {
-
     private var recognizer: RecognizerAPI = RecognizerAPI
     private var audioManager: AudioManagerApi = AudioManagerApi
     val state: ApiState
@@ -28,7 +35,7 @@ class SttClassApi {
             audioManager.bluetoothPriority = value
             field = value
             // при изменении этого параметра во время работы распознавания меняем микрофон
-            if (state != ApiState.WORKING_MIC )return
+            if (state != ApiState.WORKING_MIC) return
             if (value) audioManager.turnScoOn()
             else audioManager.turnScoOff()
         }
@@ -37,13 +44,15 @@ class SttClassApi {
 
     /**
      * Асинхронно инициализирует
-     * Инициализация происходит только если распознаватель еще не был инициализирован.
+     * Инициализация происходит только если API еще не было инициализировано.
+     * Возможна повторная полная инициализация после вызова
+     * метода [releaseModels]
      *
      * @param context контекст Android приложения
      * @param useBluetoothMic - использовать ли bluetooth микрофон при работе,
      * по умолчанию false - игнорировать микрофон. Параметр может быть переключен после
-     * методом setUseBluetoothMic (...)
-     * @return Deferred с объектом RecognizerAPI
+     * установкой поля [useBluetoothMic]
+     * @return Deferred со ссылкой на текущий объект
      *
      * пример использования:
      *
@@ -90,6 +99,42 @@ class SttClassApi {
         return deferred
     }
 
+
+    /**
+     * Флоу с подробными  результатами распознавания фразы, учитывая уровень уверенности и метку времени.
+     * Результаты  поступают в поток только после завершения предложения (паузы в речи или вызова stop ()).
+     * до завершения распознавания фразы.
+     *
+     *     "result" : [{
+     *         "conf" : 1.000000,
+     *         "end" : 1.110000,
+     *         "start" : 0.870000,
+     *         "word" : "what"
+     *       }, {
+     *         "conf" : 1.000000,
+     *         "end" : 1.530000,
+     *         "start" : 1.110000,
+     *         "word" : "zero"
+     *       }, {
+     *         "conf" : 1.000000,
+     *         "end" : 1.950000,
+     *         "start" : 1.530000,
+     *         "word" : "zero"
+     *       }, {
+     *         "conf" : 1.000000,
+     *         "end" : 2.340000,
+     *         "start" : 1.950000,
+     *         "word" : "zero"
+     *       }, {
+     *         "conf" : 1.000000,
+     *         "end" : 2.610000,
+     *         "start" : 2.340000,
+     *         "word" : "one"
+     *       }],
+     * */
+    val wordsWithConf: StateFlow<List<WordResult>> =
+        voskSpeechRecognizer.wordsWithConf.asStateFlow()
+
     /**
      * Флоу с продолжительностью текущего сеанса записи в мс. Данные обновляются 10 раз в секунду,
      * сбрасываются в 0 при начале нового сеанса распознавания.
@@ -99,7 +144,7 @@ class SttClassApi {
 
     /**
      * Флоу с последними распознанными словами. Новые слова поступают в поток только после завершения
-     * предложения (паузы в речи или вызова stop ()).
+     * предложения (паузы в речи или вызова [stopMic]).
      */
     val lastWords: StateFlow<String> = voskSpeechRecognizer.lastWords.asStateFlow()
 
@@ -221,24 +266,21 @@ class SttClassApi {
     internal object RecognizerAPI {
         internal var sttInitialized = false
         internal val voskSpeechRecognizer: VoskSpeechRecognizer = VoskSpeechRecognizer
-        /**
-         * Флоу с последними распознанными словами. Слова поступают в поток после завершения предложения -
-         * после паузы в речи).
-         */
-
     }
 
-    internal class SentenceResult {
+    class SentenceResult {
         @SerializedName("result")
-        // более подробная информация о распознанных словах может быть включена в настройках Vosk
-        // но пока не требуется
+        // более подробная информация о распознанных словах
         var result: List<WordResult> = emptyList()
 
         @SerializedName("text")
         var text: String = ""
+        override fun toString(): String {
+            return "SentenceResult(result=${result.joinToString("; ")}, text='$text')"
+        }
     }
 
-    internal class WordResult {
+    class WordResult {
         @SerializedName("conf")
         var conf = 0.0
 
@@ -250,6 +292,9 @@ class SttClassApi {
 
         @SerializedName("word")
         var word: String = ""
+        override fun toString(): String {
+            return "conf=$conf, end=$end, start=$start, word='$word'"
+        }
     }
 
     internal class PartialResult {
