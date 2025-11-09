@@ -1,4 +1,4 @@
-package com.pon.speech_to_text_wrapper.internal
+package com.pon.speech_to_text_wrapper.classInternal
 
 import android.content.BroadcastReceiver
 import android.content.Context
@@ -18,7 +18,7 @@ class BlueToothSCOConnectionReceiver : BroadcastReceiver() {
     * В случае появления конкретных проблем с отдельными устрйствами или на sdk 35-36 мы их
     * появления
      */
-    var am: AudioManager? = null
+    internal var am: AudioManager? = null
 
     @Suppress("DEPRECATION")
     override fun onReceive(context: Context, intent: Intent) {

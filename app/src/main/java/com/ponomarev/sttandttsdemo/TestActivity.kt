@@ -31,21 +31,18 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
+import com.pon.speech_to_text_wrapper.SttClassApi.ApiState.*
 import c.ponom.swenska.tts.SpeakerApi
 import c.ponom.swenska.tts.SpeakerApi.compareTo
-import com.pon.speech_to_text_wrapper.SttApi
-import com.pon.speech_to_text_wrapper.SttApi.ApiState.*
-import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.Dispatchers.IO
+import com.pon.speech_to_text_wrapper.SttClassApi
 import kotlinx.coroutines.launch
-import java.util.Locale
-import kotlin.collections.get
+
 
 class TestActivity() : ComponentActivity() {
 
-    private var recognizerApi: SttApi.RecognizerAPI? = null
+    private var recognizerApi: SttClassApi = SttClassApi()
     private var speakApi: SpeakerApi = SpeakerApi
+
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -115,14 +112,13 @@ class TestActivity() : ComponentActivity() {
 
             Button(
                 onClick = {
-                    val rec = recognizerApi
-                    if (rec == null) return@Button
-                    if (rec.apiState.value == WORKING_MIC) {
-                        rec.stopMic()
+                    if (!recognizerApi.isInitialized()) return@Button
+                    if (recognizerApi.state == WORKING_MIC) {
+                        recognizerApi.stopMic()
                         return@Button
                     }
-                    if (rec.sttReadyToStart == true) {
-                        rec.startMic()
+                    if (recognizerApi.sttReadyToStart == true) {
+                        recognizerApi.startMic()
                     }
                 },
                 enabled = recordButtonEnabled,
@@ -145,9 +141,9 @@ class TestActivity() : ComponentActivity() {
                 onClick = {
                     speakApi.speakPhrase(
                         textToSpeak,
-                        callbackOnStart = { recognizerApi?.pauseMic() },
+                        callbackOnStart = { if (recognizerApi.state==WORKING_MIC) recognizerApi.pauseMic() },
                         callbackOnError = {},
-                        callbackOnEnd = { recognizerApi?.unpauseMic() })
+                        callbackOnEnd = { if (recognizerApi.state==WORKING_MIC) recognizerApi.unpauseMic() })
                 },
                 enabled = sayWordButtonEnabled,
                 modifier = Modifier
@@ -193,14 +189,13 @@ class TestActivity() : ComponentActivity() {
                 }
                 /*
                 возможный вариант без try
-                val result = runCatching { SttApi.getRecognizerAsync(context).await() }
+                val result = runCatching { recognizerApi.initSTT(context).await() }
                 result.onFailure {
                     it.printStackTrace()
                     recordButtonText = "Не удалось инициализировать API"
                     recordButtonEnabled = false
                 }
                 result.onSuccess {
-                    recognizerApi= it
                     recordButtonEnabled = true
                     recordButtonText = "Начать распознавание"
                     mainScope.launch {
@@ -211,23 +206,28 @@ class TestActivity() : ComponentActivity() {
                 }
                  */
                 try {
-                    val recognizer = SttApi.getRecognizerAsync(context).await()
-                    recognizerApi = recognizer
+                    recognizerApi.initSTT(context,true).await()
                     recordButtonEnabled = true
                     recordButtonText = "Начать распознавание"
                     launch {
-                        recognizer.allWords.collect {
+                        recognizerApi.recordTime.collect {
+                            textState = (it/1000f).toString()
+                        }
+                    }
+
+                    launch {
+                        recognizerApi.allWords.collect {
                             currentText = it.toString()
                         }
                     }
                     launch {
-                        recognizer.partialWords.collect {
+                        recognizerApi.partialWords.collect {
                             partialText = it.toString()
                         }
                     }
                     launch {
-                        recognizer.apiState.collect {
-                            textState = it.toString()
+                        recognizerApi.apiState.collect {
+
                             apiState = it
                             when (apiState) {
                                 CREATED_NOT_READY -> {
@@ -310,10 +310,9 @@ class TestActivity() : ComponentActivity() {
     override fun onDestroy() {
         super.onDestroy()
         runCatching {
-            recognizerApi?.stopMic()
-            recognizerApi?.releaseModels()
-            recognizerApi = null
-        }
+            recognizerApi.stopMic()
+            recognizerApi.releaseModels()
+         }
         speakApi.release()
     }
 
@@ -323,12 +322,7 @@ class TestActivity() : ComponentActivity() {
      */
     override fun onPause() {
         super.onPause()
-        val rec = recognizerApi
-        if (rec == null) return
-        if (rec.apiState.value == WORKING_MIC) {
-            rec.stopMic()
-        }
+        if (recognizerApi.apiState.value == WORKING_MIC) recognizerApi.stopMic()
     }
-
 
 }
