@@ -16,6 +16,8 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 
 
 /**
@@ -28,11 +30,11 @@ import kotlinx.coroutines.launch
 class SttClassApi {
     private var recognizer: RecognizerAPI = RecognizerAPI
     private var audioManager: AudioManagerApi = AudioManagerApi
+    private var initMutex = Mutex()
     val state: ApiState
         get() = voskSpeechRecognizer.state
     var useBluetoothMic: Boolean = false
         set(value) {
-            audioManager.bluetoothPriority = value
             field = value
             // при изменении этого параметра во время работы распознавания меняем микрофон
             if (state != ApiState.WORKING_MIC) return
@@ -77,24 +79,26 @@ class SttClassApi {
     fun initSTT(context: Context, useBluetoothMic: Boolean = false): Deferred<SttClassApi> {
         val deferred = CompletableDeferred<SttClassApi>()
         if (!audioManager.isInitialised) audioManager.init(
-            context.applicationContext as Application,
-            useBluetoothMic
+            context.applicationContext as Application
         )
+
         this.useBluetoothMic = useBluetoothMic
         CoroutineScope(Dispatchers.IO).launch {
-            if (recognizer.sttInitialized) {
-                deferred.complete(this@SttClassApi)
-            } else
-                voskSpeechRecognizer.prepare(
-                    context.applicationContext as Application,
-                    onVoskReady = {
-                        sttInitialized = true
-                        deferred.complete(this@SttClassApi)
-                    },
-                    onInitError = {
-                        sttInitialized = false
-                        deferred.completeExceptionally(it)
-                    })
+            initMutex.withLock(this@SttClassApi) {
+                if (recognizer.sttInitialized) {
+                    deferred.complete(this@SttClassApi)
+                } else
+                    voskSpeechRecognizer.prepare(
+                        context.applicationContext as Application,
+                        onVoskReady = {
+                            sttInitialized = true
+                            deferred.complete(this@SttClassApi)
+                        },
+                        onInitError = {
+                            sttInitialized = false
+                            deferred.completeExceptionally(it)
+                        })
+            }
         }
         return deferred
     }
@@ -103,8 +107,6 @@ class SttClassApi {
     /**
      * Флоу с подробными  результатами распознавания фразы, учитывая уровень уверенности и метку времени.
      * Результаты  поступают в поток только после завершения предложения (паузы в речи или вызова stop ()).
-     * до завершения распознавания фразы.
-     *
      *     "result" : [{
      *         "conf" : 1.000000,
      *         "end" : 1.110000,
@@ -221,7 +223,7 @@ class SttClassApi {
     /**
      * Останавливает распознавание, освобождает ресурсы моделей распознавания речи.
      * Последущий вызов других методов API до его повторной инициализации через
-     * getRecognizerAsync(...) будет вызывать исключение
+     * [initSTT] будет вызывать исключение
      */
     fun releaseModels() {
         if (!sttInitialized) throw IllegalStateException("API не инициализировано")
@@ -231,7 +233,7 @@ class SttClassApi {
     }
 
     /**
-     * Проверка возможности вызова в данный момент метода startMic(...)
+     * Проверка возможности вызова в данный момент метода [startMic]
      */
     val sttReadyToStart: Boolean
         get() = state == ApiState.FINISHED_AND_READY || state == ApiState.INITIALISED_READY
@@ -242,6 +244,9 @@ class SttClassApi {
     val sttWorking: Boolean
         get() = state == ApiState.WORKING_MIC
 
+    /**
+     * Получение списка устройств с которых возможна запись звука.
+     */
     fun getMicrophones(): List<AudioDeviceInfo> {
         val am = audioManager.am
         if (am == null) throw IllegalStateException("Init api first")
@@ -249,6 +254,10 @@ class SttClassApi {
         return list
     }
 
+    /**
+     * Проверка наличия в данный момент микрофона блютуз гарнитуры как потенциально
+     * доступного устройства
+     */
     fun isScoAvailable() =
         getMicrophones().firstOrNull { it.type == AudioDeviceInfo.TYPE_BLUETOOTH_SCO }
 

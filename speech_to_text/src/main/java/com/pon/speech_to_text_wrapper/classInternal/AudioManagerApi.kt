@@ -5,28 +5,18 @@ import android.content.Context.AUDIO_SERVICE
 import android.media.AudioManager
 
 
-private const val TAG = "AudioManager"
-
 @Suppress("DEPRECATION")
 object AudioManagerApi {
     internal var am: AudioManager? = null
-    var bluetoothPriority = false
-        set(value) {
-            if (field != value) {
-                field = value
-            }
-        }
-    var isInitialised = false
+      var isInitialised = false
 
 
-    fun init(context: Application, bluetoothPriority: Boolean = false) {
-        if (isInitialised) return
-        isInitialised = true
-        am = context.getSystemService(AUDIO_SERVICE) as AudioManager
-        this.bluetoothPriority = bluetoothPriority
+    fun init(context: Application) {
+        if (am==null) am = context.getSystemService(AUDIO_SERVICE) as AudioManager
     }
 
 
+    @Suppress("unused")
     fun scoState() = am?.isBluetoothScoOn == true
 
     /**

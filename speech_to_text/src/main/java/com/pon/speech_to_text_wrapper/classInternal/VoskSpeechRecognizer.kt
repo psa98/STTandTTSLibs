@@ -31,7 +31,7 @@ internal object VoskSpeechRecognizer : RecognitionListener {
     internal val recordTime: MutableStateFlow<Long> = MutableStateFlow(0L)
     private val gson = Gson()
     internal var recorder: AudioRecord? = null
-     private var callOnInitError: (Exception) -> Unit = {}
+    private var callOnInitError: (Exception) -> Unit = {}
     internal val allWords: MutableStateFlow<String> = MutableStateFlow("")
     internal val lastWords: MutableStateFlow<String> = MutableStateFlow("")
     internal val partialResult: MutableStateFlow<String> = MutableStateFlow("")
@@ -152,11 +152,13 @@ internal object VoskSpeechRecognizer : RecognitionListener {
     }
 
     fun stop() {
-        if (state == SttClassApi.ApiState.WORKING_MIC) speechService?.stop()
-        recorder?.setRecordPositionUpdateListener(null)
-        recorder = null
-        rec?.close()
-        state = SttClassApi.ApiState.FINISHED_AND_READY
+        if (state == SttClassApi.ApiState.WORKING_MIC) {
+            speechService?.stop()
+            recorder?.setRecordPositionUpdateListener(null)
+            rec?.close()
+            speechService?.shutdown()
+            state = SttClassApi.ApiState.FINISHED_AND_READY
+        }
     }
 
     fun release() {
